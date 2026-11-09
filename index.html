@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Clarity — Télécharger</title>
-<meta name="description" content="Clarity, un gestionnaire de tâches personnel avec un assistant IA qui tourne sur votre ordinateur. Téléchargement pour Windows.">
+<title>Mirei — Télécharger</title>
+<meta name="description" content="Mirei, un gestionnaire de tâches personnel avec un assistant IA qui tourne sur votre ordinateur. Téléchargement pour Windows.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 92 92'%3E%3Cpath d='M46 8 A38 38 0 1 0 78 65' stroke='%2319191A' stroke-width='7' stroke-linecap='round' fill='none'/%3E%3Cpath d='M46 22 A24 24 0 1 0 66 58' stroke='%2319191A' stroke-width='6' stroke-linecap='round' fill='none'/%3E%3Ccircle cx='46' cy='46' r='8' fill='%232c5aa0'/%3E%3C/svg%3E">
 <!--
-  Page de téléchargement de Clarity, servie par GitHub Pages depuis le dépôt
-  public princeraph/clarity-releases. Un seul fichier, sans police, script ni
+  Page de téléchargement de Mirei, servie par GitHub Pages depuis le dépôt
+  public princeraph/mirei-releases. Un seul fichier, sans police, script ni
   image venus d'ailleurs : elle s'affiche pareil hors ligne, et ne dit rien
   à personne de qui la consulte.
 -->
@@ -65,6 +65,7 @@
   .hero { padding: 64px 0 40px; }
   h1 { font-size: clamp(44px, 9vw, 64px); line-height: 1; letter-spacing: -.035em; margin: 0 0 18px; font-weight: 600; }
   .pitch { font-size: clamp(18px, 2.6vw, 21px); line-height: 1.5; color: var(--ink80); margin: 0 0 32px; max-width: 34em; }
+  .essence { color: var(--ink); margin-bottom: 20px; }
   .download {
     display: inline-flex; align-items: center; gap: 12px; text-decoration: none;
     background: var(--accent); color: var(--on-accent); font-weight: 600; font-size: 18px;
@@ -147,7 +148,7 @@
   <header class="top">
     <div class="brand">
       <svg viewBox="0 0 92 92" aria-hidden="true"><path d="M46 8 A38 38 0 1 0 78 65" stroke="currentColor" stroke-width="6" stroke-linecap="round" fill="none"/><path d="M46 22 A24 24 0 1 0 66 58" stroke="currentColor" stroke-width="5" stroke-linecap="round" fill="none"/><circle cx="46" cy="46" r="7.5" fill="var(--accent)"/></svg>
-      Clarity
+      Mirei
     </div>
     <span class="spacer"></span>
     <button type="button" class="lang" id="lang" lang="en">English</button>
@@ -155,9 +156,10 @@
 
   <main>
     <div class="hero">
-      <h1>Clarity</h1>
-      <p class="pitch" data-i18n="pitch">Finissez votre journée, pas votre liste. Clarity planifie votre journée dans vos vraies heures, vous dit quand elle déborde, et range le reste pour plus tard. Vos tâches restent sur votre ordinateur.</p>
-      <a class="download" href="https://github.com/princeraph/clarity-releases/releases/latest/download/Clarity-Setup.exe">
+      <h1>Mirei</h1>
+      <p class="pitch essence" data-i18n="essence">Mirei fait le vide dans ta tête quand la vie devient encombrante. Elle apporte de l’ordre au milieu du chaos quand les choses s’accumulent plus vite que tu ne peux les organiser. Elle t’aide à reconnaître tes priorités, pour bien débuter et finir ta journée.</p>
+      <p class="pitch" data-i18n="pitch">Finissez votre journée, pas votre liste. Mirei planifie votre journée dans vos vraies heures, vous dit quand elle déborde, et range le reste pour plus tard. Vos tâches restent sur votre ordinateur.</p>
+      <a class="download" href="https://github.com/princeraph/mirei-releases/releases/latest/download/Mirei-Setup.exe">
         <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>
         <span data-i18n="download">Télécharger pour Windows</span>
       </a>
@@ -165,11 +167,11 @@
     </div>
 
     <section id="installer" aria-labelledby="h-install">
-      <h2 id="h-install" data-i18n="install.title">Installer Clarity</h2>
+      <h2 id="h-install" data-i18n="install.title">Installer Mirei</h2>
       <p class="lede" data-i18n="install.lede">La première fois, Windows affiche un avertissement en bleu. C’est attendu : voici exactement quoi faire.</p>
 
       <div class="animated-only">
-        <div class="stage-box" role="img" data-i18n-aria="install.alt" aria-label="Animation de l’installation en quatre étapes : ouvrir le fichier téléchargé ; dans l’avertissement bleu de Windows, cliquer sur « Informations complémentaires » puis « Exécuter quand même » ; suivre l’installation jusqu’à « Fermer » ; Clarity s’ouvre.">
+        <div class="stage-box" role="img" data-i18n-aria="install.alt" aria-label="Animation de l’installation en quatre étapes : ouvrir le fichier téléchargé ; dans l’avertissement bleu de Windows, cliquer sur « Informations complémentaires » puis « Exécuter quand même » ; suivre l’installation jusqu’à « Fermer » ; Mirei s’ouvre.">
           <div class="stage" id="stage" aria-hidden="true">
             <!-- 1 — the browser, with the download finished -->
             <div class="win" style="left:20px;top:16px;width:600px;height:328px">
@@ -186,7 +188,7 @@
                 <svg class="abs" style="left:556px;top:8px;width:18px;height:18px" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>
               </div>
               <!-- the page behind: this very page, sketched -->
-              <div class="abs" style="left:40px;top:96px;font-size:30px;font-weight:600;letter-spacing:-.03em">Clarity</div>
+              <div class="abs" style="left:40px;top:96px;font-size:30px;font-weight:600;letter-spacing:-.03em">Mirei</div>
               <span class="bar" style="left:40px;top:144px;width:300px"></span>
               <span class="bar" style="left:40px;top:158px;width:240px"></span>
               <span class="abs" style="left:40px;top:182px;width:170px;height:34px;border-radius:8px;background:var(--accent)"></span>
@@ -200,7 +202,7 @@
                 <div class="abs" style="left:20px;top:40px;width:28px;height:36px;border-radius:4px;background:var(--panel);border:1px solid var(--hairline)">
                   <svg viewBox="0 0 92 92" style="position:absolute;left:5px;top:9px;width:17px;height:17px" aria-hidden="true"><path d="M46 8 A38 38 0 1 0 78 65" stroke="var(--ink)" stroke-width="8" stroke-linecap="round" fill="none"/><path d="M46 22 A24 24 0 1 0 66 58" stroke="var(--ink)" stroke-width="7" stroke-linecap="round" fill="none"/><circle cx="46" cy="46" r="9" fill="var(--accent)"/></svg>
                 </div>
-                <div class="abs" style="left:58px;top:41px;font-size:11.5px;font-weight:600">Clarity-Setup.exe</div>
+                <div class="abs" style="left:58px;top:41px;font-size:11.5px;font-weight:600">Mirei-Setup.exe</div>
                 <div class="abs" style="left:58px;top:60px;font-size:11px;color:var(--accent);text-decoration:underline" data-i18n="a.openFile">Ouvrir le fichier</div>
               </div>
             </div>
@@ -212,7 +214,7 @@
               <div class="abs" style="left:24px;top:92px;width:310px;font-size:11px;line-height:1.45;opacity:.95" data-i18n="a.shieldBody">SmartScreen a empêché le démarrage d’une application qu’il ne connaît pas encore.</div>
               <div class="abs" style="left:24px;top:130px;font-size:11px;text-decoration:underline" data-a="more" data-i18n="a.more">Informations complémentaires</div>
               <div class="abs" data-a="details" style="left:24px;top:134px;width:310px;font-size:11px;line-height:1.7">
-                <div><span data-i18n="a.app">Application :</span> Clarity-Setup.exe</div>
+                <div><span data-i18n="a.app">Application :</span> Mirei-Setup.exe</div>
                 <div data-i18n="a.publisher">Éditeur : Éditeur inconnu</div>
               </div>
               <div class="btn" data-a="runAnyway" style="left:82px;top:258px;width:142px;height:28px"><span data-i18n="a.runAnyway">Exécuter quand même</span></div>
@@ -223,7 +225,7 @@
             <div class="win" data-a="setup" style="left:160px;top:50px;width:320px;height:250px">
               <div class="titlebar">
                 <svg viewBox="0 0 92 92" style="width:13px;height:13px" aria-hidden="true"><path d="M46 8 A38 38 0 1 0 78 65" stroke="var(--ink)" stroke-width="8" stroke-linecap="round" fill="none"/><path d="M46 22 A24 24 0 1 0 66 58" stroke="var(--ink)" stroke-width="7" stroke-linecap="round" fill="none"/><circle cx="46" cy="46" r="9" fill="var(--accent)"/></svg>
-                <span data-i18n="a.setupTitle">Installation de Clarity</span>
+                <span data-i18n="a.setupTitle">Installation de Mirei</span>
                 <span class="ctl"><i></i><i></i><i></i></span>
               </div>
               <!-- page A: who for, Next -->
@@ -251,12 +253,12 @@
                 </div>
                 <span class="bar" style="left:20px;top:88px;width:180px"></span>
               </div>
-              <!-- page D: done, launch Clarity -->
+              <!-- page D: done, launch Mirei -->
               <div class="abs" data-a="pageD" style="inset:28px 0 44px 0">
                 <div class="abs" style="left:20px;top:16px;font-size:13px;font-weight:600" data-i18n="a.done">Installation terminée</div>
                 <span class="bar" style="left:20px;top:44px;width:240px"></span>
                 <span class="abs" style="left:20px;top:76px;width:14px;height:14px;border-radius:3px;background:var(--accent);color:var(--on-accent);font-size:11px;line-height:14px;text-align:center;font-weight:700">✓</span>
-                <div class="abs" style="left:42px;top:75px;font-size:11.5px" data-i18n="a.launch">Lancer Clarity</div>
+                <div class="abs" style="left:42px;top:75px;font-size:11.5px" data-i18n="a.launch">Lancer Mirei</div>
               </div>
               <div class="abs" style="left:0;right:0;bottom:0;height:44px;border-top:1px solid var(--hairline);background:var(--paper-subtle)"></div>
               <div class="btn" style="left:124px;top:214px;width:86px;height:24px;border:1px solid var(--hairline);color:var(--ink80);background:var(--panel)"><span data-i18n="a.cancel">Annuler</span></div>
@@ -267,11 +269,11 @@
               </div>
             </div>
 
-            <!-- 4 — Clarity is open -->
+            <!-- 4 — Mirei is open -->
             <div class="win" data-a="app" style="left:56px;top:34px;width:528px;height:296px;background:var(--paper)">
               <div class="titlebar">
                 <svg viewBox="0 0 92 92" style="width:13px;height:13px" aria-hidden="true"><path d="M46 8 A38 38 0 1 0 78 65" stroke="var(--ink)" stroke-width="8" stroke-linecap="round" fill="none"/><path d="M46 22 A24 24 0 1 0 66 58" stroke="var(--ink)" stroke-width="7" stroke-linecap="round" fill="none"/><circle cx="46" cy="46" r="9" fill="var(--accent)"/></svg>
-                Clarity
+                Mirei
                 <span class="ctl"><i></i><i></i><i></i></span>
               </div>
               <div class="abs" style="left:0;top:28px;width:120px;bottom:0;background:var(--paper-subtle);border-right:1px solid var(--hairline)">
@@ -309,24 +311,24 @@
       </div>
 
       <ol class="steps" id="steps">
-        <li><div><span data-i18n="step1">Ouvrez le fichier téléchargé, <span class="ui">Clarity-Setup.exe</span> — dans le panneau des téléchargements de votre navigateur, ou dans votre dossier Téléchargements.</span><div class="frame frames-only" data-frame="2.2"></div></div></li>
+        <li><div><span data-i18n="step1">Ouvrez le fichier téléchargé, <span class="ui">Mirei-Setup.exe</span> — dans le panneau des téléchargements de votre navigateur, ou dans votre dossier Téléchargements.</span><div class="frame frames-only" data-frame="2.2"></div></div></li>
         <li><div><span data-i18n="step2">Windows affiche « Windows a protégé votre ordinateur ». Cliquez sur <span class="ui">Informations complémentaires</span>, puis sur <span class="ui">Exécuter quand même</span>.</span><div class="frame frames-only" data-frame="5.9"></div></div></li>
-        <li><div><span data-i18n="step3">L’installation de Clarity s’ouvre. Gardez les choix proposés : <span class="ui">Suivant</span>, puis <span class="ui">Installer</span>, puis <span class="ui">Fermer</span>, avec « Lancer Clarity » coché.</span><div class="frame frames-only" data-frame="10.1"></div></div></li>
-        <li><div><span data-i18n="step4">Clarity s’ouvre. Il est aussi dans le menu Démarrer, et sur le bureau.</span><div class="frame frames-only" data-frame="12.2"></div></div></li>
+        <li><div><span data-i18n="step3">L’installation de Mirei s’ouvre. Gardez les choix proposés : <span class="ui">Suivant</span>, puis <span class="ui">Installer</span>, puis <span class="ui">Fermer</span>, avec « Lancer Mirei » coché.</span><div class="frame frames-only" data-frame="10.1"></div></div></li>
+        <li><div><span data-i18n="step4">Mirei s’ouvre. Il est aussi dans le menu Démarrer, et sur le bureau.</span><div class="frame frames-only" data-frame="12.2"></div></div></li>
       </ol>
 
-      <p class="why" data-i18n="why"><strong>Pourquoi cet avertissement ?</strong> Clarity est une application nouvelle, pas encore signée avec un certificat payant : Windows ne la connaît donc pas encore, et le dit. Si c’est Raphaël qui vous a envoyé ce lien, vous pouvez continuer.</p>
+      <p class="why" data-i18n="why"><strong>Pourquoi cet avertissement ?</strong> Mirei est une application nouvelle, pas encore signée avec un certificat payant : Windows ne la connaît donc pas encore, et le dit. Si c’est Raphaël qui vous a envoyé ce lien, vous pouvez continuer.</p>
     </section>
 
     <section id="maj" aria-labelledby="h-updates">
       <h2 id="h-updates" data-i18n="updates.title">Mises à jour</h2>
-      <p data-i18n="updates.body">Rien à retélécharger : Clarity se met à jour tout seul. Quand une nouvelle version existe, Clarity l’annonce dès son ouverture : <span class="update-pill">Mettre à jour maintenant</span> ou <span class="update-pill">Plus tard</span>. Maintenant : Clarity se ferme, une fenêtre montre l’installation, puis il se rouvre tout seul. Plus tard : elle s’installe la prochaine fois que vous quittez Clarity depuis son icône près de l’horloge (clic droit › Quitter Clarity). Éteindre l’ordinateur ne suffit pas : d’ici là, Clarity vous la repropose.</p>
+      <p data-i18n="updates.body">Rien à retélécharger : Mirei se met à jour tout seul. Quand une nouvelle version existe, Mirei l’annonce dès son ouverture : <span class="update-pill">Mettre à jour maintenant</span> ou <span class="update-pill">Plus tard</span>. Maintenant : Mirei se ferme, une fenêtre montre l’installation, puis il se rouvre tout seul. Plus tard : elle s’installe la prochaine fois que vous quittez Mirei depuis son icône près de l’horloge (clic droit › Quitter Mirei). Éteindre l’ordinateur ne suffit pas : d’ici là, Mirei vous la repropose.</p>
     </section>
   </main>
 
   <footer>
-    <span data-i18n="footer">Clarity est un projet personnel de Raphaël, partagé avec quelques amis.</span>
-    <a href="https://github.com/princeraph/clarity-releases/releases" data-i18n="allVersions">Toutes les versions</a>
+    <span data-i18n="footer">Mirei est un projet personnel de Raphaël, partagé avec quelques amis.</span>
+    <a href="https://github.com/princeraph/mirei-releases/releases" data-i18n="allVersions">Toutes les versions</a>
   </footer>
 </div>
 
@@ -338,14 +340,15 @@
   // Le français est écrit dans la page ; l'anglais vit ici. Les textes français
   // sont relus depuis la page au chargement, pour pouvoir y revenir.
   var EN = {
-    pitch: 'Finish your day, not your list. Clarity plans your day within your real hours, tells you when it overflows, and puts the rest away for later. Your tasks stay on your computer.',
+    essence: 'Mirei clears your mind when life gets busy, when you can’t see the end of the line. It brings order when things start piling up faster than you can sort them. It shows you what actually comes first, helping you know where to start, so your day can end in peace.',
+    pitch:'Finish your day, not your list. Mirei plans your day within your real hours, tells you when it overflows, and puts the rest away for later. Your tasks stay on your computer.',
     download: 'Download for Windows',
     'meta.windows': 'Windows 10 and 11',
     'meta.free': 'Free',
     'meta.mac': 'Mac version coming',
-    'install.title': 'Installing Clarity',
+    'install.title': 'Installing Mirei',
     'install.lede': 'The first time, Windows shows a blue warning. That is expected — here is exactly what to do.',
-    'install.alt': 'Animation of the installation in four steps: open the downloaded file; in Windows’ blue warning, click “More info”, then “Run anyway”; follow the installer to “Finish”; Clarity opens.',
+    'install.alt': 'Animation of the installation in four steps: open the downloaded file; in Windows’ blue warning, click “More info”, then “Run anyway”; follow the installer to “Finish”; Mirei opens.',
     'a.downloads': 'Downloads',
     'a.openFile': 'Open file',
     'a.shieldTitle': 'Windows protected your PC',
@@ -355,28 +358,28 @@
     'a.publisher': 'Publisher: Unknown publisher',
     'a.runAnyway': 'Run anyway',
     'a.dontRun': 'Don’t run',
-    'a.setupTitle': 'Clarity Setup',
+    'a.setupTitle': 'Mirei Setup',
     'a.installing': 'Installing',
     'a.done': 'Setup complete',
-    'a.launch': 'Run Clarity',
+    'a.launch': 'Run Mirei',
     'a.cancel': 'Cancel',
     'a.next': 'Next ›',
     'a.install': 'Install',
     'a.close': 'Finish',
     'a.hello': 'Hello.',
     'a.helloSub': 'What matters today?',
-    step1: 'Open the downloaded file, <span class="ui">Clarity-Setup.exe</span> — from your browser’s downloads panel, or from your Downloads folder.',
+    step1: 'Open the downloaded file, <span class="ui">Mirei-Setup.exe</span> — from your browser’s downloads panel, or from your Downloads folder.',
     step2: 'Windows shows “Windows protected your PC”. Click <span class="ui">More info</span>, then <span class="ui">Run anyway</span>.',
-    step3: 'Clarity Setup opens. Keep the suggested choices: <span class="ui">Next</span>, then <span class="ui">Install</span>, then <span class="ui">Finish</span>, with “Run Clarity” ticked.',
-    step4: 'Clarity opens. It is also in the Start menu, and on your desktop.',
-    why: '<strong>Why the warning?</strong> Clarity is a new app, not yet signed with a paid certificate, so Windows does not know it yet — and says so. If Raphaël sent you this link, it is safe to continue.',
+    step3: 'Mirei Setup opens. Keep the suggested choices: <span class="ui">Next</span>, then <span class="ui">Install</span>, then <span class="ui">Finish</span>, with “Run Mirei” ticked.',
+    step4: 'Mirei opens. It is also in the Start menu, and on your desktop.',
+    why: '<strong>Why the warning?</strong> Mirei is a new app, not yet signed with a paid certificate, so Windows does not know it yet — and says so. If Raphaël sent you this link, it is safe to continue.',
     'updates.title': 'Updates',
-    'updates.body': 'Nothing to download again: Clarity updates itself. When there is a new version, Clarity says so as it opens: <span class="update-pill">Update now</span> or <span class="update-pill">Later</span>. Now: Clarity closes, a window shows the installation, then it reopens by itself. Later: it installs the next time you quit Clarity from its icon by the clock (right-click › Quit Clarity). Shutting down the computer is not enough: until then, Clarity offers it again.',
-    footer: 'Clarity is a personal project by Raphaël, shared with a few friends.',
+    'updates.body': 'Nothing to download again: Mirei updates itself. When there is a new version, Mirei says so as it opens: <span class="update-pill">Update now</span> or <span class="update-pill">Later</span>. Now: Mirei closes, a window shows the installation, then it reopens by itself. Later: it installs the next time you quit Mirei from its icon by the clock (right-click › Quit Mirei). Shutting down the computer is not enough: until then, Mirei offers it again.',
+    footer: 'Mirei is a personal project by Raphaël, shared with a few friends.',
     allVersions: 'All versions'
   };
   var FR = {};
-  var TITLE = { fr: 'Clarity — Télécharger', en: 'Clarity — Download' };
+  var TITLE = { fr: 'Mirei — Télécharger', en: 'Mirei — Download' };
 
   function store(key, value) { try { if (value === undefined) return localStorage.getItem(key); localStorage.setItem(key, value); } catch (e) { return null; } }
 
