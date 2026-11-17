@@ -1,0 +1,619 @@
+# Publie une version de Mirei, ou vérifie seulement une branche sous Windows.
+#
+# Le code source vit dans un dépôt privé, lu avec un jeton en lecture seule. Ce dépôt-ci est PUBLIC : les minutes
+# des exécuteurs GitHub standard y sont gratuites et ne comptent pas dans le quota partagé des dépôts privés
+# (2 000 min/mois, épuisé le 14 novembre 2026). Toute la preuve Windows de Mirei se fait donc ici, depuis le
+# 17 novembre 2026 ; la CI du dépôt privé ne garde que les contrôles Linux, et seulement à la main.
+#
+# Lancé à la main seulement (Actions › Publier une version › Run workflow) :
+#   - ref       : branche, étiquette ou commit du code source (défaut : main) ;
+#   - publier   : décoché = vérifier seulement (contrôles + Windows), rien n'est publié. C'est la vérification
+#                 « Windows vert avant fusion » d'une branche ;
+#   - ancienne  : aussi tester la mise à jour depuis la plus ancienne version publiée (1.3.0), APRÈS publication.
+#
+# Coût : ~10 min Linux + ~30 min Windows par passage, gratuites ici. Rien n'est jamais téléversé en artefact : un
+# installateur va directement dans une version (Release) de ce dépôt.
+#
+# Les journaux de ce dépôt sont PUBLICS : aucune étape n'affiche de secret ni de donnée personnelle.
+#
+# Secrets attendus (Settings › Secrets and variables › Actions de ce dépôt) :
+#   MIREI_SOURCE_REPO   « propriétaire/nom » du dépôt du code source
+#   MIREI_SOURCE_TOKEN  jeton à grain fin, lecture seule du contenu (Contents: Read) de ce seul dépôt
+name: Publier une version
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branche, étiquette ou commit du code source
+        required: true
+        default: main
+      publier:
+        description: Publier la version (décoché = vérifier seulement)
+        type: boolean
+        default: true
+      ancienne:
+        description: Aussi tester la mise à jour depuis la 1.3.0 (après publication)
+        type: boolean
+        default: false
+
+# Jamais annulée en cours : une publication coupée laisserait une version à moitié déposée.
+concurrency:
+  group: publier
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  controles:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      existe: ${{ steps.version.outputs.existe }}
+    steps:
+      - name: le jeton du code source est configuré
+        env:
+          REPO: ${{ secrets.MIREI_SOURCE_REPO }}
+          TOKEN: ${{ secrets.MIREI_SOURCE_TOKEN }}
+        run: |
+          if [ -z "$REPO" ] || [ -z "$TOKEN" ]; then
+            echo "::error::Secrets MIREI_SOURCE_REPO et MIREI_SOURCE_TOKEN absents (Settings › Secrets and variables › Actions)."
+            exit 1
+          fi
+
+      - name: code source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.MIREI_SOURCE_REPO }}
+          token: ${{ secrets.MIREI_SOURCE_TOKEN }}
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Publiée = la version existe ET porte les trois fichiers dont la mise à jour a besoin (une v1.3.0 sans
+      # latest.yml, 6 octobre 2026). Une version complète n'est jamais republiée : augmenter la version du code.
+      - name: version à publier
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLIER: ${{ inputs.publier }}
+        run: |
+          version=$(node -p "require('./app/package.json').version")
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo "::error::Version inattendue : $version"; exit 1; fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if assets=$(gh release view "v$version" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null); then
+            echo "existe=oui" >> "$GITHUB_OUTPUT"
+          else
+            echo "existe=non" >> "$GITHUB_OUTPUT"; assets=""
+          fi
+          manque=0
+          for f in Mirei-Setup.exe Mirei-Setup.exe.blockmap latest.yml; do grep -qx "$f" <<< "$assets" || manque=1; done
+          if [ "$PUBLIER" = "true" ] && [ "$manque" = "0" ]; then
+            echo "::error::v$version est déjà publiée et complète. Augmenter la version dans app/package.json."
+            exit 1
+          fi
+          echo "v$version — publier : $PUBLIER"
+
+      - name: contrôles (qualite.json + dist/)
+        working-directory: app
+        run: node tools/controles.mjs
+
+      - name: l'assistant intégré répond (petit modèle)
+        working-directory: app/backend
+        timeout-minutes: 5
+        run: |
+          mkdir -p "$RUNNER_TEMP/modeles"
+          curl -sSfL -o "$RUNNER_TEMP/modeles/test.gguf" https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/09816acd5d99df7be770d85ea30822623dab342c/SmolLM2-135M-Instruct-Q3_K_S.gguf
+          echo "7add77b8d3736d6b2fd21dc96e69be026f19bde843e9988b43cef1315fc5eebe  $RUNNER_TEMP/modeles/test.gguf" | sha256sum -c -
+          node tools/essai-moteur.mjs "$RUNNER_TEMP/modeles"
+
+      - name: la vraie fenêtre Electron (clé, CSP, rappel, glisser)
+        working-directory: app
+        run: |
+          npm ci --no-audit --no-fund
+          npx install-electron
+          npm install --no-save --no-audit --no-fund playwright-core@1.63.0
+          xvfb-run -a node tools/essai-electron.cjs
+
+  # Windows, la plateforme des utilisateurs : rejoue Update.bat sur une machine neuve, empaquette, installe en
+  # silence et vérifie l'app installée. Le même installateur, s'il passe, devient la version publiée.
+  windows:
+    needs: controles
+    runs-on: windows-latest
+    timeout-minutes: 60
+    # 2.5.0: the backend wants the window's key; the app takes this one instead of
+    # a random one, and every call below sends it (backend/src/security/jeton.js).
+    env:
+      CLARITY_API_TOKEN: ci-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: code source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.MIREI_SOURCE_REPO }}
+          token: ${{ secrets.MIREI_SOURCE_TOKEN }}
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: dépendances, comme Update.bat
+        working-directory: app
+        shell: cmd
+        run: |
+          call npm install --no-audit --no-fund || exit /b 1
+          call npx install-electron || exit /b 1
+          cd backend && call npm install --no-audit --no-fund || exit /b 1
+          cd ..\frontend && call npm install --no-audit --no-fund || exit /b 1
+
+      - name: empaqueter, comme Update.bat
+        working-directory: app
+        shell: cmd
+        run: call npm run package
+
+      # Sans electron-updater dans le paquet, startUpdateChecks() se tait
+      # (require en try/catch) : l'app installée ne se mettrait plus jamais à
+      # jour, et rien ne le montrerait. Ce que l'installateur livre est lu ici.
+      - name: le paquet contient de quoi se mettre à jour
+        working-directory: app
+        shell: pwsh
+        run: |
+          $res = 'dist-electron/win-unpacked/resources'
+          $liste = node -e "console.log(require('@electron/asar').listPackage(process.argv[1]).join('\n'))" "$res/app.asar"
+          if ($LASTEXITCODE -ne 0) { "::error::app.asar illisible"; exit 1 }
+          $dedans = ($liste -match '[\\/]node_modules[\\/]electron-updater[\\/]package\.json$') -or (Test-Path "$res/app.asar.unpacked/node_modules/electron-updater/package.json")
+          if (-not $dedans) { "::error::electron-updater absent du paquet : l'app installée ne se mettrait plus à jour"; exit 1 }
+          if (-not (Test-Path "$res/app-update.yml")) { "::error::app-update.yml absent : l'app ne saurait pas où chercher ses mises à jour"; exit 1 }
+          Get-Content "$res/app-update.yml"
+
+      # La mise à jour suivante est refusée dès qu'un fichier suivi a bougé.
+      - name: aucun fichier suivi modifié par la mise à jour
+        shell: pwsh
+        run: |
+          $sale = git status --porcelain --untracked-files=no
+          if ($sale) { $sale; git diff; exit 1 }
+
+      - name: installer en silence
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem app/dist-electron -Filter 'Mirei-Setup.exe' | Select-Object -First 1
+          Start-Process -Wait -FilePath $setup.FullName -ArgumentList '/S'
+          $exe = Get-ChildItem "$env:LOCALAPPDATA\Programs" -Recurse -Filter Mirei.exe | Select-Object -First 1
+          if (-not $exe) { Write-Error "Mirei.exe introuvable après installation"; exit 1 }
+          "installé : $($exe.FullName)"
+          "CLARITY_EXE=$($exe.FullName)" >> $env:GITHUB_ENV
+
+      # L'épingle de la barre des tâches tient à l'identité Windows de l'app
+      # (AppUserModelID) : celle du raccourci installé doit être celle que la
+      # fenêtre déclare (electron/main.js, vérifié par un test). Sans elle, une
+      # Mirei épinglée se désépinglait à chaque fermeture ou mise à jour.
+      - name: le raccourci installé porte l'identité de l'app
+        shell: pwsh
+        run: |
+          $lnk = Get-ChildItem "$env:APPDATA\Microsoft\Windows\Start Menu\Programs" -Recurse -Filter 'Mirei.lnk' | Select-Object -First 1
+          if (-not $lnk) { Write-Error "raccourci Mirei.lnk introuvable dans le menu Démarrer"; exit 1 }
+          $item = (New-Object -ComObject Shell.Application).Namespace($lnk.DirectoryName).ParseName($lnk.Name)
+          $aumid = $item.ExtendedProperty('System.AppUserModel.ID')
+          $attendu = (Get-Content app/package.json -Raw | ConvertFrom-Json).build.appId
+          "raccourci : $($lnk.FullName) — AppUserModelID : '$aumid'"
+          if ($aumid -ne $attendu) { Write-Error "le raccourci porte '$aumid', l'app déclare '$attendu'"; exit 1 }
+
+      # Le backend installé, lancé par le binaire installé — sans Node du système.
+      - name: l'app installée sert les tâches et refuse un Host étranger
+        shell: pwsh
+        run: |
+          $PSDefaultParameterValues['Invoke-WebRequest:Headers'] = @{ 'X-Clarity-Token' = $env:CLARITY_API_TOKEN }
+          $PSDefaultParameterValues['Invoke-RestMethod:Headers'] = @{ 'X-Clarity-Token' = $env:CLARITY_API_TOKEN }
+          $env:ELECTRON_RUN_AS_NODE = '1'
+          $env:CLARITY_DATA_DIR = Join-Path $env:RUNNER_TEMP 'clarity-data'
+          $backend = Join-Path (Split-Path $env:CLARITY_EXE) 'resources\backend\server.js'
+          $p = Start-Process -PassThru -NoNewWindow -FilePath $env:CLARITY_EXE -ArgumentList "`"$backend`""
+          $ok = $false
+          for ($i = 0; $i -lt 40 -and -not $ok; $i++) {
+            try { $r = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:3001/api/tasks; $ok = $r.StatusCode -eq 200 } catch { Start-Sleep -Milliseconds 500 }
+          }
+          if (-not $ok) { Write-Error "le backend installé ne répond pas"; exit 1 }
+          "Host légitime : 200"
+          try { Invoke-WebRequest -UseBasicParsing -Headers @{ Host = 'evil.example:3001'; 'X-Clarity-Token' = $env:CLARITY_API_TOKEN } http://127.0.0.1:3001/api/tasks | Out-Null; Write-Error "Host étranger accepté"; exit 1 }
+          catch { if ($_.Exception.Response.StatusCode.value__ -ne 403) { throw } ; "Host étranger : 403" }
+          Stop-Process -Id $p.Id -Force
+
+      # L'assistant intégré dans l'app installée : le moteur qui a survécu à
+      # l'empaquetage (CPU + Vulkan, sans CUDA), lancé par Mirei.exe, répond
+      # par les routes que l'interface appelle — discussion en flux, et pistes
+      # « je suis bloqué » en JSON sous schéma.
+      - name: l'app installée répond avec l'assistant intégré
+        shell: pwsh
+        timeout-minutes: 8
+        run: |
+          $PSDefaultParameterValues['Invoke-WebRequest:Headers'] = @{ 'X-Clarity-Token' = $env:CLARITY_API_TOKEN }
+          $PSDefaultParameterValues['Invoke-RestMethod:Headers'] = @{ 'X-Clarity-Token' = $env:CLARITY_API_TOKEN }
+          $modeles = Join-Path $env:RUNNER_TEMP 'modeles'
+          New-Item -ItemType Directory -Force -Path $modeles | Out-Null
+          $gguf = Join-Path $modeles 'test.gguf'
+          Invoke-WebRequest -UseBasicParsing -OutFile $gguf https://huggingface.co/bartowski/SmolLM2-135M-Instruct-GGUF/resolve/09816acd5d99df7be770d85ea30822623dab342c/SmolLM2-135M-Instruct-Q3_K_S.gguf
+          if ((Get-FileHash -Algorithm SHA256 $gguf).Hash -ne '7ADD77B8D3736D6B2FD21DC96E69BE026F19BDE843E9988B43CEF1315FC5EEBE') { Write-Error "modèle de test altéré"; exit 1 }
+
+          $env:ELECTRON_RUN_AS_NODE = '1'
+          $env:CLARITY_DATA_DIR = Join-Path $env:RUNNER_TEMP 'clarity-moteur'
+          $env:CLARITY_MODELS_DIR = $modeles
+          New-Item -ItemType Directory -Force -Path $env:CLARITY_DATA_DIR | Out-Null
+          @{ providerType = 'local'; onboardingComplete = $true } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $env:CLARITY_DATA_DIR 'settings.json')
+          $backend = Join-Path (Split-Path $env:CLARITY_EXE) 'resources\backend\server.js'
+          $p = Start-Process -PassThru -NoNewWindow -FilePath $env:CLARITY_EXE -ArgumentList "`"$backend`""
+          $ok = $false
+          for ($i = 0; $i -lt 40 -and -not $ok; $i++) {
+            try { $ok = (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:3001/api/health).StatusCode -eq 200 } catch { Start-Sleep -Milliseconds 500 }
+          }
+          if (-not $ok) { Write-Error "le backend installé ne répond pas"; exit 1 }
+
+          $chat = Invoke-WebRequest -UseBasicParsing -TimeoutSec 120 -Method Post -Uri http://127.0.0.1:3001/api/chat -ContentType 'application/json' -Body '{"message":"Once upon a time","history":[]}'
+          if ($chat.Content -notmatch '"token"') { Write-Error "la discussion n'a rien renvoyé : $($chat.Content)"; exit 1 }
+          "discussion : $(([regex]::Matches($chat.Content, '"token"')).Count) morceaux reçus"
+
+          $tache = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:3001/api/tasks -ContentType 'application/json' -Body '{"title":"Essai"}'
+          $pistes = Invoke-RestMethod -TimeoutSec 120 -Method Post -Uri "http://127.0.0.1:3001/api/tasks/$($tache.task.id)/thread/suggest"
+          "pistes : réponse JSON lue, $($pistes.added) ajoutée(s)"
+          Stop-Process -Id $p.Id -Force
+          Get-Process Mirei -ErrorAction SilentlyContinue | Stop-Process -Force
+
+      # Le chiffrement des secrets ne peut être prouvé que sous Windows : il passe
+      # par DPAPI, via le processus principal d'Electron. L'app installée, la
+      # vraie, lancée telle quelle : migration d'une ancienne clé en clair, puis
+      # une clé neuve enregistrée, puis un redémarrage qui doit la retrouver.
+      - name: la clé d'API est chiffrée, et survit au redémarrage
+        shell: pwsh
+        run: |
+          $PSDefaultParameterValues['Invoke-WebRequest:Headers'] = @{ 'X-Clarity-Token' = $env:CLARITY_API_TOKEN }
+          $PSDefaultParameterValues['Invoke-RestMethod:Headers'] = @{ 'X-Clarity-Token' = $env:CLARITY_API_TOKEN }
+          $data = Join-Path $env:APPDATA 'Mirei\data'
+          $fichier = Join-Path $data 'settings.json'
+          $masque = ([string][char]0x2022) * 8
+          function Attendre { for ($i = 0; $i -lt 90; $i++) { try { if ((Invoke-WebRequest -UseBasicParsing http://127.0.0.1:3001/api/health).StatusCode -eq 200) { return } } catch {}; Start-Sleep -Milliseconds 500 }; throw "Mirei ne répond pas" }
+          function Arreter { Get-Process Mirei -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep -Seconds 3 }
+          Arreter
+
+          # 0. Comme chez l'utilisateur : Mirei a déjà tourné. safeStorage ne
+          #    chiffre pas avec DPAPI directement — il chiffre avec une clé que
+          #    Chromium génère au premier lancement, protège par DPAPI, et écrit
+          #    dans « Local State » une dizaine de secondes plus tard. Mesuré :
+          #    tué avant cette écriture, l'app perdait la clé, et tout secret
+          #    chiffré avec. On reproduit donc la vraie situation — un premier
+          #    lancement complet — puis on vérifie que la clé est bien sur disque.
+          #    Attendre l'écriture elle-même, pas un délai fixe : 15 s
+          #    suffisaient d'habitude, pas toujours (29 octobre, un passage
+          #    rouge puis vert sur le même commit).
+          $ls_path = Join-Path $env:APPDATA 'Mirei\Local State'
+          Start-Process -FilePath $env:CLARITY_EXE; Attendre
+          for ($i = 0; $i -lt 90; $i++) { if ((Test-Path $ls_path) -and ((Get-Content $ls_path -Raw) -match '"encrypted_key"')) { break }; Start-Sleep -Milliseconds 500 }
+          Start-Sleep -Seconds 2; Arreter
+          $ls = Get-Content (Join-Path $env:APPDATA 'Mirei\Local State') -Raw
+          if ($ls -notmatch '"encrypted_key"') { Write-Error "Local State ne porte pas la clé de chiffrement après un premier lancement"; exit 1 }
+          "premier lancement : la clé de chiffrement est écrite dans Local State"
+
+          # 1. Une ancienne version avait écrit la clé en clair.
+          New-Item -ItemType Directory -Force -Path $data | Out-Null
+          $ancienne = "sk-ANCIENNE-$([guid]::NewGuid())"
+          @{ providerType = 'openai'; apiKey = $ancienne } | ConvertTo-Json | Set-Content -Encoding utf8 $fichier
+          Start-Process -FilePath $env:CLARITY_EXE; Attendre
+          $c = Get-Content $fichier -Raw
+          if ($c -match [regex]::Escape($ancienne)) { Write-Error "migration : l'ancienne clé est toujours en clair"; exit 1 }
+          if ($c -notmatch '"enc"') { Write-Error "migration : rien de chiffré"; exit 1 }
+          "migration : l'ancienne clé est désormais chiffrée"
+
+          # 2. Une clé neuve, enregistrée par l'app.
+          $temoin = "sk-TEMOIN-$([guid]::NewGuid())"
+          Invoke-RestMethod -Method Post -Uri http://127.0.0.1:3001/api/settings -ContentType 'application/json' -Body (@{ providerType = 'openai'; apiKey = $temoin } | ConvertTo-Json) | Out-Null
+          $c = Get-Content $fichier -Raw
+          if ($c -match [regex]::Escape($temoin)) { Write-Error "la clé neuve est écrite en clair"; exit 1 }
+          if ($c -notmatch '"enc"') { Write-Error "la clé neuve n'est pas chiffrée"; exit 1 }
+          "enregistrement : aucune trace de la clé en clair dans settings.json"
+
+          # 3. Redémarrage IMMÉDIAT après l'enregistrement — le cas dur : aucun
+          #    délai ne doit plus être nécessaire, la clé de chiffrement existait.
+          Arreter; Start-Process -FilePath $env:CLARITY_EXE; Attendre
+          $relu = (Invoke-RestMethod http://127.0.0.1:3001/api/settings).apiKey
+          if ($relu -ne $masque) { Write-Error "après redémarrage, la clé est perdue (lu : '$relu')"; exit 1 }
+          "redémarrage : la clé est relue et déchiffrée"
+          Arreter
+
+      # Le connecteur IA, comme Claude Desktop s'en sert : Mirei lancé en
+      # arrière-plan (barre des tâches, sans fenêtre), l'extension récupérée,
+      # son serveur lancé par Mirei.exe en guise de Node, et une conversation
+      # MCP complète. Puis Mirei fermé : le premier appel doit le réveiller.
+      - name: le connecteur IA répond, et réveille Mirei fermé
+        shell: pwsh
+        timeout-minutes: 8
+        run: |
+          $PSDefaultParameterValues['Invoke-WebRequest:Headers'] = @{ 'X-Clarity-Token' = $env:CLARITY_API_TOKEN }
+          $PSDefaultParameterValues['Invoke-RestMethod:Headers'] = @{ 'X-Clarity-Token' = $env:CLARITY_API_TOKEN }
+          function Arreter { Get-Process Mirei -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep -Seconds 3 }
+          Arreter
+          Start-Process -FilePath $env:CLARITY_EXE -ArgumentList '--background'
+          $ok = $false
+          for ($i = 0; $i -lt 90 -and -not $ok; $i++) { try { $ok = (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:3001/api/health).StatusCode -eq 200 } catch { Start-Sleep -Milliseconds 500 } }
+          if (-not $ok) { Write-Error "Mirei --background ne répond pas"; exit 1 }
+          $fenetres = Get-Process Mirei | Where-Object { $_.MainWindowTitle }
+          if ($fenetres) { Write-Error "--background a ouvert une fenêtre : $($fenetres.MainWindowTitle)"; exit 1 }
+          "arrière-plan : Mirei répond, aucune fenêtre ouverte"
+
+          node app/backend/tools/essai-connecteur.mjs --node $env:CLARITY_EXE --expect-app
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+          Arreter
+          try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 http://127.0.0.1:3001/api/health | Out-Null; Write-Error "Mirei tourne encore"; exit 1 } catch { "Mirei fermé" }
+          node app/backend/tools/essai-connecteur.mjs --node $env:CLARITY_EXE --wake
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Arreter
+
+      # L'option « installer Ollama pour moi », pour de vrai : l'app installée
+      # télécharge l'installateur officiel, vérifie sa signature Authenticode,
+      # l'installe sans droits d'admin, le démarre, tire un petit modèle, puis
+      # bascule dessus. La discussion doit ensuite répondre PAR Ollama.
+      - name: l'app installée installe Ollama et s'y branche
+        shell: pwsh
+        timeout-minutes: 20
+        run: |
+          $PSDefaultParameterValues['Invoke-WebRequest:Headers'] = @{ 'X-Clarity-Token' = $env:CLARITY_API_TOKEN }
+          $PSDefaultParameterValues['Invoke-RestMethod:Headers'] = @{ 'X-Clarity-Token' = $env:CLARITY_API_TOKEN }
+          Get-Process Mirei -ErrorAction SilentlyContinue | Stop-Process -Force
+          $env:ELECTRON_RUN_AS_NODE = '1'
+          $env:CLARITY_DATA_DIR = Join-Path $env:RUNNER_TEMP 'clarity-ollama'
+          New-Item -ItemType Directory -Force -Path $env:CLARITY_DATA_DIR | Out-Null
+          @{ providerType = 'ollama'; onboardingComplete = $true } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $env:CLARITY_DATA_DIR 'settings.json')
+          $backend = Join-Path (Split-Path $env:CLARITY_EXE) 'resources\backend\server.js'
+          $log = Join-Path $env:RUNNER_TEMP 'backend-ollama.log'
+          $p = Start-Process -PassThru -NoNewWindow -FilePath $env:CLARITY_EXE -ArgumentList "`"$backend`"" -RedirectStandardOutput $log
+          $ok = $false
+          for ($i = 0; $i -lt 40 -and -not $ok; $i++) {
+            try { $ok = (Invoke-WebRequest -UseBasicParsing http://127.0.0.1:3001/api/health).StatusCode -eq 200 } catch { Start-Sleep -Milliseconds 500 }
+          }
+          if (-not $ok) { Write-Error "le backend installé ne répond pas"; exit 1 }
+
+          $avant = Invoke-RestMethod http://127.0.0.1:3001/api/ollama/install
+          "avant : prise en charge=$($avant.supported) installé=$($avant.installed) en marche=$($avant.running)"
+          Invoke-RestMethod -Method Post -Uri http://127.0.0.1:3001/api/ollama/install -ContentType 'application/json' -Body '{"model":"smollm2:135m"}' | Out-Null
+          $etat = ''
+          for ($i = 0; $i -lt 900; $i++) {
+            $s = (Invoke-RestMethod http://127.0.0.1:3001/api/ollama/install).install
+            if ($s.state -ne $etat) { "$([int]($i))s : $($s.state) $($s.received)/$($s.total) $($s.error)"; $etat = $s.state }
+            if ($s.state -in 'done', 'error', 'cancelled') { break }
+            Start-Sleep -Seconds 1
+          }
+          Get-Content $log | Select-String 'ollama'
+          if ($etat -ne 'done') { Write-Error "installation d'Ollama : $etat"; exit 1 }
+
+          $reglages = Invoke-RestMethod http://127.0.0.1:3001/api/settings
+          if ($reglages.providerType -ne 'ollama' -or $reglages.ollamaModel -ne 'smollm2:135m') { Write-Error "Mirei n'a pas basculé sur Ollama"; exit 1 }
+          $sante = Invoke-RestMethod http://127.0.0.1:3001/api/health
+          if (-not $sante.ollama) { Write-Error "Ollama installé mais injoignable"; exit 1 }
+          "modèles d'Ollama : $($sante.availableModels -join ', ')"
+          $chat = Invoke-WebRequest -UseBasicParsing -TimeoutSec 180 -Method Post -Uri http://127.0.0.1:3001/api/chat -ContentType 'application/json' -Body '{"message":"Hello","history":[]}'
+          if ($chat.Content -notmatch '"token"') { Write-Error "Ollama n'a pas répondu : $($chat.Content)"; exit 1 }
+          "discussion par Ollama : $(([regex]::Matches($chat.Content, '"token"')).Count) morceaux reçus"
+          Stop-Process -Id $p.Id -Force
+
+      # Une mise à jour, telle qu'electron-updater la lance après « Mettre à
+      # jour maintenant » : silencieuse demandée, relance demandée. 1.3.1 et
+      # 1.3.2 installaient sans rien montrer pendant que Mirei était fermé.
+      # L'installateur (build/installer.nsh) doit se montrer quand même, ne
+      # demander aucun clic, se fermer seul, et rouvrir Clarity.
+      - name: une mise à jour se voit, se ferme seule et rouvre Mirei
+        shell: pwsh
+        timeout-minutes: 8
+        run: |
+          Get-Process Mirei -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Seconds 2
+          $setup = (Get-ChildItem app/dist-electron -Filter 'Mirei-Setup.exe' | Select-Object -First 1).FullName
+          # La langue choisie dans Mirei (ici le français, sur un Windows
+          # anglais) : l'installateur doit la parler, pas celle de Windows.
+          New-Item -ItemType Directory -Force -Path "$env:APPDATA\Mirei" | Out-Null
+          Set-Content -NoNewline -Encoding ascii -Path "$env:APPDATA\Mirei\locale.txt" -Value 'fr-FR'
+          $debut = Get-Date
+          $p = Start-Process -PassThru -FilePath $setup -ArgumentList '--updated', '/S', '--force-run'
+          $titres = @()
+          while (-not $p.HasExited -and ((Get-Date) - $debut).TotalSeconds -lt 300) {
+            $p.Refresh()
+            if ($p.MainWindowHandle -ne 0 -and $p.MainWindowTitle -and $titres -notcontains $p.MainWindowTitle) {
+              $titres += $p.MainWindowTitle
+              "fenêtre de l'installateur après $([int]((Get-Date) - $debut).TotalSeconds) s : « $($p.MainWindowTitle) »"
+            }
+            Start-Sleep -Milliseconds 200
+          }
+          if (-not $p.HasExited) { Write-Error "l'installateur attend encore après 300 s : une page demande un clic ?"; exit 1 }
+          "installateur fermé seul après $([int]((Get-Date) - $debut).TotalSeconds) s"
+          if (-not $titres) { Write-Error "aucune fenêtre pendant la mise à jour : elle est restée silencieuse"; exit 1 }
+          if (-not ($titres -match '^Installation de ')) { Write-Error "l'installateur n'a pas parlé français : $($titres -join ' | ')"; exit 1 }
+          $rouvert = $null
+          for ($i = 0; $i -lt 60 -and -not $rouvert; $i++) {
+            $rouvert = Get-Process Mirei -ErrorAction SilentlyContinue | Where-Object { $_.StartTime -gt $debut } | Select-Object -First 1
+            if (-not $rouvert) { Start-Sleep -Milliseconds 500 }
+          }
+          if (-not $rouvert) { Write-Error "Mirei ne s'est pas rouvert après la mise à jour"; exit 1 }
+          "Mirei rouvert : $((Get-CimInstance Win32_Process -Filter "ProcessId=$($rouvert.Id)").CommandLine)"
+          Get-Process Mirei -ErrorAction SilentlyContinue | Stop-Process -Force
+
+      # Qui modifie frontend/src/ sous Windows reconstruit dist/ et le commite.
+      # Ce build doit rendre les octets déjà versionnés : il en rendait un de
+      # trop (un CRLF sur `<div id="root"></div>`), ce qui bloquait le pull.
+      - name: dist/ reconstruit sous Windows est identique au versionné
+        working-directory: app/frontend
+        shell: pwsh
+        run: |
+          npm run build
+          $sale = git status --porcelain -- dist/
+          if ($sale) { $sale; git diff -- dist/; exit 1 }
+
+      # ── Publication : seulement si « publier » est coché, et seulement après toutes les vérifications ci-dessus.
+      - name: les fichiers de la mise à jour sont là
+        if: inputs.publier
+        shell: pwsh
+        run: |
+          foreach ($f in 'Mirei-Setup.exe', 'Mirei-Setup.exe.blockmap', 'latest.yml') {
+            if (-not (Test-Path "app/dist-electron/$f")) { Write-Error "manque app/dist-electron/$f"; exit 1 }
+          }
+          Get-Content app/dist-electron/latest.yml
+
+      # La page d'abord : elle donne au dépôt le commit sur lequel poser l'étiquette de la version.
+      - name: pages de ce dépôt
+        if: inputs.publier
+        uses: actions/checkout@v4
+        with:
+          path: rel
+
+      - name: mettre à jour la page de téléchargement
+        if: inputs.publier
+        shell: pwsh
+        run: |
+          Copy-Item -Recurse -Force app/release-site/* rel/
+          Set-Location rel
+          git config user.name "Claude"
+          git config user.email "noreply@anthropic.com"
+          git add -A
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) { "page inchangée" } else { git commit -m "Page de téléchargement : v${{ needs.controles.outputs.version }}"; git push origin HEAD:main }
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: publier la version
+        if: inputs.publier
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $repo = $env:GITHUB_REPOSITORY
+          $v = "v${{ needs.controles.outputs.version }}"
+          $files = 'app/dist-electron/Mirei-Setup.exe', 'app/dist-electron/Mirei-Setup.exe.blockmap', 'app/dist-electron/latest.yml'
+          if ('${{ needs.controles.outputs.existe }}' -eq 'oui') {
+            # Une version incomplète est complétée, pas recréée : --clobber remplace un fichier du même nom.
+            gh release upload $v --repo $repo --clobber @files
+          } else {
+            gh release create $v --repo $repo --target main --title "Mirei ${{ needs.controles.outputs.version }}" --notes "Téléchargez Mirei-Setup.exe ci-dessous, ou passez par la page : https://princeraph.github.io/mirei-releases/" @files
+          }
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          # Publiée et marquée « latest » : ce que lisent le lien de la page et la mise à jour automatique. Jamais
+          # une version plus ancienne que la « latest » actuelle (toutes les applis redescendraient).
+          $actuelle = gh release view --repo $repo --json tagName --jq .tagName 2>$null
+          $marquer = -not $actuelle -or ([version]$v.TrimStart('v') -ge [version]$actuelle.TrimStart('v'))
+          gh release edit $v --repo $repo --draft=false --latest=$($marquer.ToString().ToLower())
+          if ($LASTEXITCODE -ne 0) { Write-Error "gh release edit a échoué"; exit 1 }
+          # Vérifié, pas supposé : un brouillon n'est lu par aucune appli.
+          $etat = gh release view $v --repo $repo --json isDraft,tagName | ConvertFrom-Json
+          if ($etat.isDraft) { Write-Error "$v est encore un brouillon"; exit 1 }
+          if ($marquer) {
+            $latest = gh release view --repo $repo --json tagName --jq .tagName
+            if ($latest -ne $v) { Write-Error "« latest » est $latest au lieu de $v"; exit 1 }
+          }
+          gh release view $v --repo $repo
+
+
+  # Une copie installée doit pouvoir rejoindre la dernière version d'elle-même,
+  # sans désinstaller, quelle que soit son ancienneté — demande du 13 octobre :
+  # des testeurs restaient sur une vieille version. Part de la PLUS ANCIENNE
+  # version publiée avec mise à jour automatique (1.3.0), et ne compte que sur
+  # ce que cette version-là sait faire : chercher, télécharger, installer
+  # par-dessus. Une tâche témoin vérifie que les données passent la mise à jour.
+  ancienne-version:
+    needs: windows
+    if: inputs.ancienne
+    runs-on: windows-latest
+    timeout-minutes: 15
+    # 2.5.0: the backend wants the window's key; the app takes this one instead of
+    # a random one, and every call below sends it (backend/src/security/jeton.js).
+    env:
+      CLARITY_API_TOKEN: ci-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: installer la plus ancienne version publiée (1.3.0)
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          $PSDefaultParameterValues['Invoke-WebRequest:Headers'] = @{ 'X-Clarity-Token' = $env:CLARITY_API_TOKEN }
+          $PSDefaultParameterValues['Invoke-RestMethod:Headers'] = @{ 'X-Clarity-Token' = $env:CLARITY_API_TOKEN }
+          $base = 'https://github.com/princeraph/mirei-releases/releases'
+          Invoke-WebRequest "$base/download/v1.3.0/Clarity-Setup.exe" -OutFile "$env:RUNNER_TEMP\old.exe" -UseBasicParsing
+          Start-Process -Wait -FilePath "$env:RUNNER_TEMP\old.exe" -ArgumentList '/S'
+          $exe = Get-ChildItem "$env:LOCALAPPDATA\Programs" -Recurse -Filter *.exe | Where-Object { $_.Name -in 'Mirei.exe','Clarity.exe' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $exe) { Write-Error 'la 1.3.0 ne s est pas installée'; exit 1 }
+          "installée : $($exe.VersionInfo.ProductVersion)"
+          $data = "$env:APPDATA\Clarity\data"
+          New-Item -ItemType Directory -Force -Path $data | Out-Null
+          $now = (Get-Date).ToUniversalTime().ToString('o')
+          $temoin = @{ tasks = @(@{ id = 'temoin-maj'; title = 'Témoin d''avant la mise à jour'; description = ''; deadline = $null; status = 'not_started'; tags = @('temoin'); subtasks = @(); recurring = 'none'; timeTracked = 0; timerStarted = $null; archived = $false; history = @(); createdAt = $now; updatedAt = $now }); analysis = $null; weeklySummary = $null }
+          $temoin | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 -Path "$data\tasks.json"
+
+      - name: la 1.3.0 trouve et télécharge seule la dernière version
+        shell: pwsh
+        timeout-minutes: 12
+        run: |
+          $PSDefaultParameterValues['Invoke-WebRequest:Headers'] = @{ 'X-Clarity-Token' = $env:CLARITY_API_TOKEN }
+          $PSDefaultParameterValues['Invoke-RestMethod:Headers'] = @{ 'X-Clarity-Token' = $env:CLARITY_API_TOKEN }
+          $latest = (Invoke-WebRequest 'https://github.com/princeraph/mirei-releases/releases/latest/download/latest.yml' -UseBasicParsing).Content
+          if ($latest -is [byte[]]) { $latest = [Text.Encoding]::UTF8.GetString($latest) }
+          $want = ([regex]'version:\s*(\S+)').Match($latest).Groups[1].Value
+          "dernière publiée : $want"
+          Add-Content $env:GITHUB_ENV "WANT=$want"
+          $exe = (Get-ChildItem "$env:LOCALAPPDATA\Programs" -Recurse -Filter *.exe | Where-Object { $_.Name -in 'Mirei.exe','Clarity.exe' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+          Start-Process -FilePath $exe
+          $pending = "$env:LOCALAPPDATA\clarity-updater\pending"
+          $found = $null
+          for ($i = 0; $i -lt 200 -and -not $found; $i++) {
+            Start-Sleep -Seconds 3
+            # temp-*.exe = téléchargement en cours ; le fichier final est renommé à la fin.
+            $found = Get-ChildItem $pending -Filter *.exe -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike 'temp-*' -and $_.Length -gt 10MB } | Select-Object -First 1
+          }
+          if (-not $found) { "::error::aucun téléchargement complet après 10 min : la 1.3.0 ne trouve pas la mise à jour"; exit 1 }
+          Start-Sleep -Seconds 10   # le fichier finit de s'écrire
+          "::notice::téléchargé : $($found.Name), $([int]($found.Length/1MB)) Mo"
+          Add-Content $env:GITHUB_ENV "PENDING=$($found.FullName)"
+
+      - name: installée par-dessus, sans désinstaller, données intactes
+        shell: pwsh
+        timeout-minutes: 8
+        run: |
+          Get-Process Clarity,Mirei -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Seconds 2
+          # Ce que fait quitAndInstall : l'installateur téléchargé, en silence.
+          Start-Process -Wait -FilePath $env:PENDING -ArgumentList '--updated', '/S'
+          # L'installateur peut rendre la main avant d'avoir fini de copier.
+          $got = ''
+          for ($i = 0; $i -lt 45 -and -not $got.StartsWith($env:WANT); $i++) {
+            $exe = Get-ChildItem "$env:LOCALAPPDATA\Programs" -Recurse -Filter *.exe -ErrorAction SilentlyContinue | Where-Object { $_.Name -in 'Mirei.exe','Clarity.exe' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            $got = if ($exe) { "$($exe.VersionInfo.ProductVersion)" } else { '' }
+            if (-not $got.StartsWith($env:WANT)) { Start-Sleep -Seconds 2 }
+          }
+          $all = (Get-ChildItem "$env:LOCALAPPDATA\Programs" -Recurse -Filter *.exe -ErrorAction SilentlyContinue | Where-Object { $_.Name -in 'Mirei.exe','Clarity.exe' } | ForEach-Object { "$($_.FullName)=$($_.VersionInfo.ProductVersion)" }) -join ' ; '
+          "::notice::installée : '$got' — attendue : '$env:WANT' — exe trouvés : $all"
+          if (-not $got.StartsWith($env:WANT)) { "::error::la mise à jour n'a pas abouti : '$got' au lieu de '$env:WANT'"; exit 1 }
+          $f = @("$env:APPDATA\Mirei\data\tasks.json", "$env:APPDATA\Clarity\data\tasks.json") | Where-Object { Test-Path $_ } | Select-Object -First 1; if (-not $f) { $f = "$env:APPDATA\Mirei\data\tasks.json" }
+          $tasks = if (Test-Path $f) { Get-Content -Raw $f } else { '' }
+          $dirs = (Get-ChildItem "$env:APPDATA" -Directory | Where-Object Name -match 'larity' | ForEach-Object { $_.FullName }) -join ' ; '
+          "::notice::données : $f existe=$(Test-Path $f) — dossiers : $dirs"
+          if ($tasks -notmatch 'temoin-maj') { "::error::la tâche témoin a disparu avec la mise à jour"; exit 1 }
+          'tâche témoin conservée'
+          Get-Process Clarity,Mirei -ErrorAction SilentlyContinue | Stop-Process -Force
+
+      # Installée ne veut pas dire qui marche : la version arrivée par mise à
+      # jour doit démarrer sur les données d'avant, et les servir.
+      - name: la version mise à jour démarre et sert les tâches d'avant
+        shell: pwsh
+        timeout-minutes: 4
+        run: |
+          $PSDefaultParameterValues['Invoke-WebRequest:Headers'] = @{ 'X-Clarity-Token' = $env:CLARITY_API_TOKEN }
+          $PSDefaultParameterValues['Invoke-RestMethod:Headers'] = @{ 'X-Clarity-Token' = $env:CLARITY_API_TOKEN }
+          $exe = (Get-ChildItem "$env:LOCALAPPDATA\Programs" -Recurse -Filter *.exe | Where-Object { $_.Name -in 'Mirei.exe','Clarity.exe' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+          Start-Process -FilePath $exe -ArgumentList '--background'
+          $body = $null
+          for ($i = 0; $i -lt 60 -and -not $body; $i++) {
+            Start-Sleep -Seconds 2
+            try { $body = (Invoke-WebRequest 'http://localhost:3001/api/tasks' -UseBasicParsing -TimeoutSec 5).Content } catch { }
+          }
+          Get-Process Clarity,Mirei -ErrorAction SilentlyContinue | Stop-Process -Force
+          if (-not $body) { "::error::la version mise à jour ne répond pas après 2 min"; exit 1 }
+          if ($body -notmatch 'temoin-maj') { "::error::la version mise à jour démarre mais ne sert plus la tâche témoin"; exit 1 }
+          "::notice::la version mise à jour sert la tâche témoin"
